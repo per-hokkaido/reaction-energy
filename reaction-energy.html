@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>活性化エネルギーシミュレーション</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0c1929;
+  --panel: #132135;
+  --surface: #1a2d45;
+  --border: #253d5c;
+  --text: #ddeeff;
+  --muted: #6a90b0;
+  --blue: #38bdf8;
+  --green: #4ade80;
+  --orange: #fb923c;
+  --red: #f87171;
+  --yellow: #fbbf24;
+  --purple: #c084fc;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Noto Sans JP', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 18px 14px;
+  gap: 14px;
+}
+h1 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--blue);
+  letter-spacing: 0.04em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.layout {
+  display: flex;
+  gap: 14px;
+  width: 100%;
+  max-width: 1080px;
+}
+.left-col { flex: 1.5; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.right-col { width: 340px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px; }
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+}
+.card-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+canvas { display: block; border-radius: 8px; width: 100%; }
+
+/* Controls */
+.type-row { display: flex; gap: 8px; margin-bottom: 14px; }
+.type-btn {
+  flex: 1;
+  padding: 9px 10px;
+  border-radius: 8px;
+  border: 2px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  font-family: 'Noto Sans JP', sans-serif;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: center;
+}
+.type-btn.active-exo { border-color: var(--orange); color: var(--orange); background: rgba(251,146,60,0.1); }
+.type-btn.active-endo { border-color: var(--blue); color: var(--blue); background: rgba(56,189,248,0.1); }
+
+.slider-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 7px; }
+.slider-header span { font-size: 0.83rem; color: var(--muted); }
+.slider-val { font-family: 'JetBrains Mono', monospace; font-weight: 600; font-size: 0.88rem; color: var(--yellow); }
+
+input[type=range] {
+  width: 100%; -webkit-appearance: none;
+  height: 6px; border-radius: 3px;
+  background: var(--surface); outline: none; margin-bottom: 4px;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--yellow); cursor: pointer;
+  box-shadow: 0 0 10px rgba(251,191,36,0.5);
+}
+.slider-hint { display: flex; justify-content: space-between; font-size: 0.72rem; color: var(--muted); margin-bottom: 14px; }
+
+.btn-row { display: flex; gap: 8px; margin-top: 4px; }
+.btn {
+  flex: 1; padding: 10px; border: none; border-radius: 8px;
+  font-family: 'Noto Sans JP', sans-serif; font-size: 0.9rem;
+  font-weight: 700; cursor: pointer; transition: all 0.15s;
+}
+.btn-start { background: var(--blue); color: #0c1929; }
+.btn-start:hover { filter: brightness(1.1); transform: translateY(-1px); }
+.btn-start:active { transform: translateY(0); }
+.btn-reset { background: var(--surface); color: var(--muted); border: 1px solid var(--border); }
+.btn-reset:hover { background: var(--border); color: var(--text); }
+
+/* Energy bars */
+.ebar { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.ebar-lbl { font-size: 0.73rem; font-weight: 600; width: 52px; flex-shrink: 0; }
+.ebar-track { flex: 1; height: 11px; background: var(--surface); border-radius: 6px; overflow: hidden; }
+.ebar-fill { height: 100%; border-radius: 6px; transition: width 0.06s linear; min-width: 2px; }
+.ebar-num { font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; width: 28px; text-align: right; color: var(--text); flex-shrink: 0; }
+
+/* Status */
+.status {
+  padding: 10px 14px; border-radius: 8px;
+  font-size: 0.88rem; font-weight: 600; text-align: center;
+  transition: background 0.3s, color 0.3s, border 0.3s;
+  border: 1px solid transparent;
+}
+.s-idle { background: var(--surface); color: var(--muted); }
+.s-run  { background: rgba(56,189,248,0.12); color: var(--blue); border-color: rgba(56,189,248,0.3); }
+.s-ok   { background: rgba(74,222,128,0.12); color: var(--green); border-color: rgba(74,222,128,0.3); }
+.s-ng   { background: rgba(248,113,113,0.12); color: var(--red); border-color: rgba(248,113,113,0.3); }
+
+/* Molecule display */
+.mol-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; }
+.mol-box { flex: 1; text-align: center; }
+.mol-formula { font-size: 1.1rem; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+.mol-name { font-size: 0.72rem; color: var(--muted); margin-top: 3px; }
+.mol-arrow { color: var(--muted); font-size: 1.2rem; padding: 0 4px; }
+.mol-active .mol-formula { text-shadow: 0 0 12px currentColor; }
+</style>
+</head>
+<body>
+
+<h1>⚗️ 活性化エネルギーシミュレーション</h1>
+
+<div class="layout">
+  <!-- Left: landscape + potential -->
+  <div class="left-col">
+    <div class="card">
+      <div class="card-label">ポテンシャルエネルギー地形図 — 分子はこの「山」を越えられるか？</div>
+      <canvas id="cvLandscape"></canvas>
+    </div>
+    <div class="card">
+      <div class="card-label">ポテンシャルエネルギー図（反応座標 vs エネルギー）</div>
+      <canvas id="cvPotential"></canvas>
+    </div>
+  </div>
+
+  <!-- Right: controls + energy + status -->
+  <div class="right-col">
+    <div class="card">
+      <div class="card-label">反応タイプ</div>
+      <div class="type-row">
+        <button class="type-btn active-exo" id="btnExo" onclick="setType('exo')">🔥 発熱反応<br><small style="font-weight:400;font-size:0.72rem;">生成物のエネルギーが低い</small></button>
+        <button class="type-btn" id="btnEndo" onclick="setType('endo')">❄️ 吸熱反応<br><small style="font-weight:400;font-size:0.72rem;">生成物のエネルギーが高い</small></button>
+      </div>
+
+      <div class="card-label">発射エネルギー（初期の全エネルギー E₀）</div>
+      <div class="slider-header">
+        <span>小（遅い）→ 大（速い）</span>
+        <span class="slider-val" id="slVal">50</span>
+      </div>
+      <input type="range" id="slEnergy" min="15" max="88" value="50" step="1">
+      <div class="slider-hint">
+        <span id="hintL">← 反応物レベル付近</span>
+        <span id="hintR">Ea 山頂 付近 →</span>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-start" onclick="startSim()">▶ 発射！</button>
+        <button class="btn btn-reset" onclick="resetSim()">↺ リセット</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-label">エネルギー内訳（リアルタイム）</div>
+      <div class="ebar">
+        <span class="ebar-lbl" style="color:var(--yellow);">全エネルギー</span>
+        <div class="ebar-track"><div class="ebar-fill" id="bTotal" style="background:var(--yellow)"></div></div>
+        <span class="ebar-num" id="vTotal">—</span>
+      </div>
+      <div class="ebar">
+        <span class="ebar-lbl" style="color:var(--green);">運動エネルギー</span>
+        <div class="ebar-track"><div class="ebar-fill" id="bKE" style="background:var(--green)"></div></div>
+        <span class="ebar-num" id="vKE">—</span>
+      </div>
+      <div class="ebar">
+        <span class="ebar-lbl" style="color:var(--orange);">ポテンシャルE</span>
+        <div class="ebar-track"><div class="ebar-fill" id="bPE" style="background:var(--orange)"></div></div>
+        <span class="ebar-num" id="vPE">—</span>
+      </div>
+      <div style="font-size:0.73rem;color:var(--muted);margin-top:4px;">
+        全E = 運動E + ポテンシャルE（保存される）
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-label">分子の状態</div>
+      <div class="mol-row">
+        <div class="mol-box" id="molR">
+          <div class="mol-formula" style="color:var(--blue);">A·BC</div>
+          <div class="mol-name">反応物</div>
+        </div>
+        <span class="mol-arrow">→</span>
+        <div class="mol-box" id="molTS">
+          <div class="mol-formula" style="color:var(--red);">[A–B–C]‡</div>
+          <div class="mol-name">遷移状態</div>
+        </div>
+        <span class="mol-arrow">→</span>
+        <div class="mol-box" id="molP">
+          <div class="mol-formula" style="color:var(--green);">AB·C</div>
+          <div class="mol-name">生成物</div>
+        </div>
+      </div>
+      <canvas id="cvMolecule" style="width:100%;height:80px;border-radius:8px;background:var(--surface);"></canvas>
+    </div>
+
+    <div class="card" style="padding:12px 14px;">
+      <div class="status s-idle" id="statusBox">▶ 発射ボタンを押してください</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─────────────────────────────────────
+// 1.  Canvas setup utility
+// ─────────────────────────────────────
+function mkCanvas(id, cssH) {
+  const el = document.getElementById(id);
+  const dpr = window.devicePixelRatio || 1;
+  el.style.height = cssH + 'px';
+  // Width is set by CSS (100%), read after layout
+  const w = el.parentElement.clientWidth - 28; // card padding
+  const h = cssH;
+  el.width  = w * dpr;
+  el.height = h * dpr;
+  el.style.width  = w + 'px';
+  const ctx = el.getContext('2d');
+  ctx.scale(dpr, dpr);
+  return { ctx, w, h };
+}
+
+// ─────────────────────────────────────
+// 2.  Potential energy model
+// ─────────────────────────────────────
+// V(x) = peakH * exp(-a*x²)  +  (HL+HR)/2  -  (HL-HR)/2 * tanh(b*x)
+// Results (exo): V(-2.3)≈30, V(0)≈80, V(2.3)≈10
+//           (endo): V(-2.3)≈10, V(0)≈80, V(2.3)≈30
+const PARAMS = {
+  exo:  { HL: 30, HR: 10, peakH: 60, a: 2.0, b: 1.8 },
+  endo: { HL: 10, HR: 30, peakH: 60, a: 2.0, b: 1.8 },
+};
+let TYPE = 'exo';
+function Vx(x) {
+  const p = PARAMS[TYPE];
+  return p.peakH * Math.exp(-p.a * x * x)
+       + (p.HL + p.HR) / 2
+       - (p.HL - p.HR) / 2 * Math.tanh(p.b * x);
+}
+function Vpeak()  { return Vx(0); }
+function Vleft()  { return Vx(X_START); }
+function Vright() { return Vx(X_END);   }
+
+const X_START = -2.25;
+const X_END   =  2.25;
+const X_MIN   = -2.65, X_MAX = 2.65;
+const V_MIN   =  0,    V_MAX = 105;
+
+// ─────────────────────────────────────
+// 3.  Simulation state
+// ─────────────────────────────────────
+let STATE  = 'idle'; // idle | run | ok | ng
+let E0     = 50;
+let ballX  = X_START;
+let ballDir = 1;
+let animID = null;
+let trail  = []; // recent x positions for ghost trail
+
+// ─────────────────────────────────────
+// 4.  Canvas references (filled after layout)
+// ─────────────────────────────────────
+let LC, PC, MC; // landscape, potential, molecule
+
+// ─────────────────────────────────────
+// 5.  Coordinate helpers
+// ─────────────────────────────────────
+function lcX(x)  { return ((x - X_MIN) / (X_MAX - X_MIN)) * LC.w; }
+function lcY(v)  { return LC.h - (v / V_MAX) * LC.h * 0.83 - LC.h * 0.06; }
+function pcX(x)  { return ((x - X_MIN) / (X_MAX - X_MIN)) * PC.w; }
+function pcY(v)  { return PC.h - ((v - V_MIN) / (V_MAX - V_MIN)) * PC.h * 0.82 - PC.h * 0.07; }
+
+// ─────────────────────────────────────
+// 6.  Drawing: Landscape canvas
+// ─────────────────────────────────────
+function drawLandscape() {
+  const { ctx, w, h } = LC;
+  ctx.clearRect(0, 0, w, h);
+
+  // ── background gradient ──
+  const bgGrd = ctx.createLinearGradient(0, 0, 0, h);
+  bgGrd.addColorStop(0, '#050e1a');
+  bgGrd.addColorStop(1, '#0c1929');
+  ctx.fillStyle = bgGrd;
+  ctx.fillRect(0, 0, w, h);
+
+  const p = PARAMS[TYPE];
+  const PEAK = Vpeak();
+
+  // ── E₀ total-energy line ──
+  ctx.save();
+  ctx.setLineDash([7, 5]);
+  ctx.strokeStyle = 'rgba(251,191,36,0.75)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(0, lcY(E0));
+  ctx.lineTo(w, lcY(E0));
+  ctx.stroke();
+  ctx.restore();
+
+  // label
+  ctx.fillStyle = 'rgba(251,191,36,0.9)';
+  ctx.font = '12px JetBrains Mono, monospace';
+  ctx.textAlign = 'right';
+  ctx.fillText('E₀ = ' + E0.toFixed(0), w - 8, lcY(E0) - 6);
+
+  // ── terrain fill ──
+  const terGrd = ctx.createLinearGradient(0, lcY(PEAK), 0, h);
+  terGrd.addColorStop(0,   'rgba(248, 113, 113, 0.80)');
+  terGrd.addColorStop(0.25,'rgba(251, 146,  60, 0.72)');
+  terGrd.addColorStop(0.55,'rgba(56,  189, 248, 0.55)');
+  terGrd.addColorStop(1,   'rgba(19,  33,  53, 0.80)');
+
+  ctx.beginPath();
+  const N = w;
+  for (let i = 0; i <= N; i++) {
+    const xi = X_MIN + (i / N) * (X_MAX - X_MIN);
+    const yi = lcY(Vx(xi));
+    i === 0 ? ctx.moveTo(i, yi) : ctx.lineTo(i, yi);
+  }
+  ctx.lineTo(w, h); ctx.lineTo(0, h); ctx.closePath();
+  ctx.fillStyle = terGrd;
+  ctx.fill();
+
+  // ── terrain outline ──
+  ctx.beginPath();
+  for (let i = 0; i <= N; i++) {
+    const xi = X_MIN + (i / N) * (X_MAX - X_MIN);
+    const yi = lcY(Vx(xi));
+    i === 0 ? ctx.moveTo(i, yi) : ctx.lineTo(i, yi);
+  }
+  ctx.strokeStyle = 'rgba(255,255,255,0.88)';
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+
+  // ── terrain zone labels ──
+  ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(56,189,248,0.85)';
+  ctx.font = '600 12px Noto Sans JP, sans-serif';
+  ctx.fillText('反応物  A + BC', lcX(-1.65), lcY(p.HL) - 26);
+
+  ctx.fillStyle = 'rgba(74,222,128,0.85)';
+  ctx.fillText('生成物  AB + C', lcX(1.65), lcY(p.HR) - 26);
+
+  ctx.fillStyle = 'rgba(248,113,113,0.85)';
+  ctx.font = '600 11px Noto Sans JP, sans-serif';
+  ctx.fillText('[A–B–C]‡  遷移状態', lcX(0), lcY(PEAK) - 12);
+
+  // ── Ea arrow (forward) ──
+  const ax = lcX(-1.9);
+  drawArrow(ctx, ax, lcY(p.HL), ax, lcY(PEAK), 'rgba(251,191,36,0.75)');
+  ctx.fillStyle = 'rgba(251,191,36,0.85)';
+  ctx.font = '11px JetBrains Mono, monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('Ea', ax + 5, (lcY(p.HL) + lcY(PEAK)) / 2 + 4);
+
+  // ── ΔH arrow (reaction enthalpy) ──
+  const dx2 = lcX(2.1);
+  const dH = p.HR - p.HL;
+  const dHcol = dH < 0 ? 'rgba(251,146,60,0.75)' : 'rgba(56,189,248,0.75)';
+  drawArrow(ctx, dx2, lcY(p.HL), dx2, lcY(p.HR), dHcol);
+  ctx.fillStyle = dHcol;
+  ctx.font = '11px JetBrains Mono, monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('ΔH', dx2 + 4, (lcY(p.HL) + lcY(p.HR)) / 2 + 4);
+
+  // ── ghost trail ──
+  for (let i = 0; i < trail.length; i++) {
+    const alpha = (i / trail.length) * 0.35;
+    const tx = lcX(trail[i]);
+    const ty = lcY(Vx(trail[i]));
+    ctx.beginPath();
+    ctx.arc(tx, ty, 5, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(56,189,248,${alpha})`;
+    ctx.fill();
+  }
+
+  // ── KE indicator line (vertical gap) ──
+  if (STATE === 'run') {
+    const bpx = lcX(ballX);
+    const bpy = lcY(Vx(ballX));
+    const ely = lcY(E0);
+    const ke  = Math.max(0, E0 - Vx(ballX));
+    if (ke > 1) {
+      ctx.save();
+      ctx.setLineDash([3, 3]);
+      ctx.strokeStyle = 'rgba(74,222,128,0.6)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(bpx, bpy); ctx.lineTo(bpx, ely);
+      ctx.stroke();
+      ctx.restore();
+      ctx.fillStyle = 'rgba(74,222,128,0.8)';
+      ctx.font = '10px JetBrains Mono, monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText('Ek', bpx + 5, (bpy + ely) / 2 + 4);
+    }
+  }
+
+  // ── ball ──
+  const bpx = lcX(ballX);
+  const bpy = lcY(Vx(ballX));
+  const bc  = ballColor();
+
+  // glow
+  const grd = ctx.createRadialGradient(bpx, bpy, 0, bpx, bpy, 22);
+  grd.addColorStop(0,   bc.replace(')', ', 0.9)').replace('rgb(', 'rgba('));
+  grd.addColorStop(0.4, bc.replace(')', ', 0.5)').replace('rgb(', 'rgba('));
+  grd.addColorStop(1,   bc.replace(')', ', 0)').replace('rgb(', 'rgba('));
+  // simpler glow using globalAlpha
+  ctx.save();
+  ctx.globalAlpha = 0.55;
+  ctx.beginPath(); ctx.arc(bpx, bpy, 20, 0, Math.PI * 2);
+  ctx.fillStyle = bc; ctx.fill();
+  ctx.restore();
+
+  ctx.beginPath(); ctx.arc(bpx, bpy, 10, 0, Math.PI * 2);
+  ctx.fillStyle = bc; ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+  ctx.lineWidth = 1.5; ctx.stroke();
+
+  // inner highlight
+  ctx.beginPath(); ctx.arc(bpx - 3, bpy - 3, 3.5, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(255,255,255,0.45)'; ctx.fill();
+}
+
+// ─────────────────────────────────────
+// 7.  Drawing: Potential energy diagram
+// ─────────────────────────────────────
+function drawPotential() {
+  const { ctx, w, h } = PC;
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#132135';
+  ctx.fillRect(0, 0, w, h);
+
+  const p = PARAMS[TYPE];
+  const PEAK = Vpeak();
+
+  // grid
+  ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+  ctx.lineWidth = 1;
+  for (let v = 20; v <= 80; v += 20) {
+    ctx.beginPath(); ctx.moveTo(0, pcY(v)); ctx.lineTo(w, pcY(v)); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.18)';
+    ctx.font = '9px JetBrains Mono, monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText(v, 3, pcY(v) - 2);
+  }
+
+  // reactant/product level dashes
+  ctx.save();
+  ctx.setLineDash([3, 5]);
+  ctx.strokeStyle = 'rgba(56,189,248,0.5)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(pcX(X_MIN), pcY(p.HL)); ctx.lineTo(pcX(-0.6), pcY(p.HL)); ctx.stroke();
+  ctx.strokeStyle = 'rgba(74,222,128,0.5)';
+  ctx.beginPath(); ctx.moveTo(pcX(0.6), pcY(p.HR)); ctx.lineTo(pcX(X_MAX), pcY(p.HR)); ctx.stroke();
+  ctx.restore();
+
+  // potential curve – coloured by zone
+  const N = w * 2;
+  function drawZone(x0, x1, color) {
+    ctx.beginPath();
+    let first = true;
+    for (let i = 0; i <= N; i++) {
+      const xi = x0 + (i / N) * (x1 - x0);
+      if (xi < X_MIN || xi > X_MAX) continue;
+      const px = pcX(xi), py = pcY(Vx(xi));
+      first ? (ctx.moveTo(px, py), first = false) : ctx.lineTo(px, py);
+    }
+    ctx.strokeStyle = color; ctx.lineWidth = 2.5; ctx.stroke();
+  }
+  drawZone(X_MIN, -0.5,  '#38bdf8');  // reactant side
+  drawZone(-0.5,   0.5,  '#f87171');  // TS zone
+  drawZone( 0.5,  X_MAX, '#4ade80');  // product side
+
+  // E₀ line
+  ctx.save();
+  ctx.setLineDash([5, 4]);
+  ctx.strokeStyle = 'rgba(251,191,36,0.8)'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(0, pcY(E0)); ctx.lineTo(w, pcY(E0)); ctx.stroke();
+  ctx.restore();
+  ctx.fillStyle = 'rgba(251,191,36,0.9)';
+  ctx.font = '10px JetBrains Mono, monospace';
+  ctx.textAlign = 'right';
+  ctx.fillText('E₀', w - 4, pcY(E0) - 4);
+
+  // Ea annotation
+  ctx.fillStyle = 'rgba(251,191,36,0.7)';
+  ctx.font = '10px JetBrains Mono, monospace';
+  ctx.textAlign = 'left';
+  drawArrow(ctx, pcX(-1.6), pcY(p.HL), pcX(-1.6), pcY(PEAK), 'rgba(251,191,36,0.65)');
+  ctx.fillText('Ea=' + (PEAK - p.HL).toFixed(0), pcX(-1.6) + 4, (pcY(p.HL) + pcY(PEAK)) / 2 + 4);
+
+  // Ball marker
+  const bpx = pcX(ballX);
+  const bpy = pcY(Vx(ballX));
+  ctx.save();
+  ctx.globalAlpha = 0.45;
+  ctx.beginPath(); ctx.arc(bpx, bpy, 12, 0, Math.PI * 2);
+  ctx.fillStyle = ballColor(); ctx.fill();
+  ctx.restore();
+  ctx.beginPath(); ctx.arc(bpx, bpy, 6, 0, Math.PI * 2);
+  ctx.fillStyle = ballColor(); ctx.fill();
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.stroke();
+
+  // axes labels
+  ctx.fillStyle = 'rgba(106,144,176,0.8)';
+  ctx.font = '10px Noto Sans JP, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('反応座標 →', w / 2, h - 3);
+  ctx.textAlign = 'left';
+  ctx.fillText('反応物', pcX(X_MIN) + 4, pcY(p.HL) + 14);
+  ctx.textAlign = 'right';
+  ctx.fillText('生成物', pcX(X_MAX) - 4, pcY(p.HR) + 14);
+
+  // energy scale label (Y axis)
+  ctx.save();
+  ctx.translate(10, h / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillStyle = 'rgba(106,144,176,0.6)';
+  ctx.font = '9px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('エネルギー', 0, 0);
+  ctx.restore();
+}
+
+// ─────────────────────────────────────
+// 8.  Drawing: Molecule canvas
+// ─────────────────────────────────────
+function drawMolecule() {
+  const { ctx, w, h } = MC;
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#1a2d45';
+  ctx.fillRect(0, 0, w, h);
+
+  // Map ballX to bond stretch: at x=-2 bonds are at rest, at x=0 all 3 atoms in a line close together
+  const t = (ballX - X_MIN) / (X_MAX - X_MIN); // 0→1
+  const cx = w / 2, cy = h / 2;
+
+  // Normalize x position in reaction coordinate: -1 = far left, 0 = TS, +1 = far right
+  const norm = ballX / 2.3; // -1..+1
+
+  // Atom positions:
+  // A is separate on left, B-C bond. As reaction proceeds, A approaches, B-C stretches.
+  // At TS: A-B-C linear, equal distances. At product: A-B bond formed, C leaves.
+  const bond = 22;
+  const stretch = Math.abs(norm); // 0 at TS, 1 at extremes
+  const leftRight = norm; // negative = reactant side, positive = product side
+
+  // A atom x position
+  const aOffset = leftRight < 0
+    ? -bond * (1 + stretch * 0.8)   // A far left of B
+    :  bond * stretch * 0.5;        // A is bonded to B, slight offset
+
+  // C atom x position
+  const cOffset = leftRight > 0
+    ?  bond * (1 + stretch * 0.8)   // C leaves to right
+    : -bond * stretch * 0.5;        // C near B
+
+  // B always at center
+  const bx = cx, by = cy;
+  const ax = cx + aOffset,  ay = cy;
+  const ccx = cx - cOffset, ccy = cy;
+
+  // bond lines
+  ctx.lineWidth = 3;
+  ctx.lineCap = 'round';
+
+  // A-B bond
+  const abDist = Math.abs(ax - bx);
+  if (abDist < bond * 1.8) {
+    ctx.strokeStyle = leftRight < 0
+      ? `rgba(56,189,248,${0.7 * (1 - stretch * 0.7)})`
+      : `rgba(56,189,248,0.7)`;
+    ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+  }
+
+  // B-C bond
+  const bcDist = Math.abs(ccx - bx);
+  if (bcDist < bond * 1.8) {
+    ctx.strokeStyle = leftRight > 0
+      ? `rgba(56,189,248,${0.7 * (1 - stretch * 0.7)})`
+      : `rgba(56,189,248,0.7)`;
+    ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(ccx, ccy); ctx.stroke();
+  }
+
+  // draw atoms
+  function atom(x, y, col, label) {
+    ctx.beginPath(); ctx.arc(x, y, 13, 0, Math.PI * 2);
+    ctx.fillStyle = col; ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.beginPath(); ctx.arc(x - 3.5, y - 3.5, 4, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.fill();
+    ctx.fillStyle = '#000';
+    ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(label, x, y + 4);
+  }
+
+  atom(ax,  ay,  '#f87171', 'A');
+  atom(bx,  by,  '#38bdf8', 'B');
+  atom(ccx, ccy, '#fbbf24', 'C');
+
+  // highlight active molecule
+  updateMolHighlight();
+}
+
+function updateMolHighlight() {
+  const r  = document.getElementById('molR');
+  const ts = document.getElementById('molTS');
+  const pr = document.getElementById('molP');
+  r.style.opacity  = ballX < -0.5 ? '1' : '0.3';
+  ts.style.opacity = Math.abs(ballX) <= 0.5 ? '1' : '0.3';
+  pr.style.opacity = ballX >  0.5 ? '1' : '0.3';
+}
+
+// ─────────────────────────────────────
+// 9.  Helpers
+// ─────────────────────────────────────
+function ballColor() {
+  if (ballX < -0.5) return '#38bdf8';
+  if (ballX >  0.5) return '#4ade80';
+  return '#f87171';
+}
+
+function drawArrow(ctx, x1, y1, x2, y2, color) {
+  ctx.save();
+  ctx.strokeStyle = color; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+  const a = Math.atan2(y2 - y1, x2 - x1);
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - 9*Math.cos(a-0.4), y2 - 9*Math.sin(a-0.4));
+  ctx.lineTo(x2 - 9*Math.cos(a+0.4), y2 - 9*Math.sin(a+0.4));
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+
+// ─────────────────────────────────────
+// 10. Energy bar update
+// ─────────────────────────────────────
+function updateBars() {
+  const pe = Vx(ballX);
+  const ke = Math.max(0, E0 - pe);
+  const M  = 90; // bar max reference
+  document.getElementById('bTotal').style.width = Math.min(100, E0 / M * 100) + '%';
+  document.getElementById('bKE').style.width    = Math.min(100, ke / M * 100) + '%';
+  document.getElementById('bPE').style.width    = Math.min(100, pe / M * 100) + '%';
+  document.getElementById('vTotal').textContent = E0.toFixed(0);
+  document.getElementById('vKE').textContent    = ke.toFixed(0);
+  document.getElementById('vPE').textContent    = pe.toFixed(0);
+}
+
+// ─────────────────────────────────────
+// 11. Status update
+// ─────────────────────────────────────
+function updateStatus() {
+  const el = document.getElementById('statusBox');
+  const PEAK = Vpeak();
+  if (STATE === 'idle') {
+    el.className = 'status s-idle';
+    el.textContent = '▶ 発射ボタンを押してください';
+  } else if (STATE === 'run') {
+    el.className = 'status s-run';
+    if (Math.abs(ballX) < 0.4)
+      el.textContent = '⚡ 遷移状態を通過中 — 今ここが一番不安定！';
+    else if (ballX > 0)
+      el.textContent = '✓ 山を越えた！ → 生成物側へ進んでいます';
+    else
+      el.textContent = `→ 山（Ea = ${(PEAK - Vx(X_START)).toFixed(0)}）に向かって進行中...`;
+  } else if (STATE === 'ok') {
+    el.className = 'status s-ok';
+    el.textContent = `✅ 反応成功！  A + BC → AB + C  (E₀ = ${E0} ≥ Ea = ${PEAK.toFixed(0)})`;
+  } else {
+    el.className = 'status s-ng';
+    el.textContent = `❌ 反応なし — エネルギー不足 (E₀ = ${E0} < Ea = ${PEAK.toFixed(0)})　もう少し上げてみよう！`;
+  }
+}
+
+// ─────────────────────────────────────
+// 12. Physics step
+// ─────────────────────────────────────
+const DT = 0.022;
+function step() {
+  const v = Vx(ballX);
+  const ke = E0 - v;
+  if (ke <= 0) {
+    ballDir = -ballDir;
+    ballX += ballDir * 0.008;
+    return;
+  }
+  const spd = Math.sqrt(ke * 2) * DT;
+  ballX += ballDir * spd;
+
+  // trail
+  trail.push(ballX);
+  if (trail.length > 24) trail.shift();
+
+  if (ballX >= X_END) {
+    ballX = X_END; STATE = 'ok'; return;
+  }
+  if (ballX <= X_START - 0.15 && ballDir < 0) {
+    ballX = X_START; STATE = 'ng'; return;
+  }
+}
+
+// ─────────────────────────────────────
+// 13. Animation loop
+// ─────────────────────────────────────
+function frame() {
+  for (let i = 0; i < 4; i++) step();
+  drawLandscape();
+  drawPotential();
+  drawMolecule();
+  updateBars();
+  updateStatus();
+  if (STATE === 'run') animID = requestAnimationFrame(frame);
+}
+
+// ─────────────────────────────────────
+// 14. Controls
+// ─────────────────────────────────────
+function setType(t) {
+  TYPE = t;
+  document.getElementById('btnExo').className  = 'type-btn' + (t === 'exo' ? ' active-exo' : '');
+  document.getElementById('btnEndo').className = 'type-btn' + (t === 'endo' ? ' active-endo' : '');
+  const p = PARAMS[t];
+  const sl = document.getElementById('slEnergy');
+  sl.min   = Math.ceil(p.HL) + 2;
+  E0       = parseInt(sl.value);
+  if (E0 < parseInt(sl.min)) { E0 = parseInt(sl.min) + 5; sl.value = E0; }
+  document.getElementById('slVal').textContent = E0;
+  resetSim();
+}
+
+function startSim() {
+  if (animID) cancelAnimationFrame(animID);
+  ballX = X_START; ballDir = 1; trail = []; STATE = 'run';
+  frame();
+}
+
+function resetSim() {
+  if (animID) { cancelAnimationFrame(animID); animID = null; }
+  ballX = X_START; ballDir = 1; trail = []; STATE = 'idle';
+  drawLandscape(); drawPotential(); drawMolecule();
+  updateBars(); updateStatus();
+}
+
+document.getElementById('slEnergy').addEventListener('input', function () {
+  E0 = parseInt(this.value);
+  document.getElementById('slVal').textContent = E0;
+  if (STATE !== 'run') resetSim();
+});
+
+// ─────────────────────────────────────
+// 15. Init
+// ─────────────────────────────────────
+window.addEventListener('load', () => {
+  requestAnimationFrame(() => {
+    // Build canvases after layout is stable
+    LC = mkCanvas('cvLandscape',  285);
+    PC = mkCanvas('cvPotential',  200);
+    MC = mkCanvas('cvMolecule',   80);
+
+    // Init slider hints
+    const p = PARAMS[TYPE];
+    document.getElementById('hintL').textContent = `← 反応物レベル (≈${p.HL})`;
+    document.getElementById('hintR').textContent = `Ea 山頂 (≈${Vpeak().toFixed(0)}) →`;
+    document.getElementById('slEnergy').min = p.HL + 2;
+
+    resetSim();
+  });
+});
+</script>
+</body>
+</html>
